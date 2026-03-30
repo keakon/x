@@ -32,6 +32,7 @@ const (
 	MethodTextDocumentCompletion             = "textDocument/completion"
 	MethodTextDocumentHover                  = "textDocument/hover"
 	MethodTextDocumentDefinition             = "textDocument/definition"
+	MethodTextDocumentImplementation         = "textDocument/implementation"
 	MethodTextDocumentReferences             = "textDocument/references"
 	MethodTextDocumentDiagnostic             = "textDocument/publishDiagnostics"
 	MethodTextDocumentRename                 = "textDocument/rename"
@@ -406,6 +407,48 @@ func (c *Client) RequestHover(ctx context.Context, uri string, position protocol
 	return &result, nil
 }
 
+// RequestDefinitionRaw requests the raw definition result at the given position.
+func (c *Client) RequestDefinitionRaw(ctx context.Context, uri string, position protocol.Position) (*protocol.Or_Result_textDocument_definition, error) {
+	if !c.initialized.Load() {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	params := protocol.DefinitionParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(uri)},
+			Position:     position,
+		},
+	}
+
+	var result protocol.Or_Result_textDocument_definition
+	err := c.conn.Call(ctx, MethodTextDocumentDefinition, params, &result)
+	if err != nil {
+		return nil, fmt.Errorf("definition request failed: %w", err)
+	}
+	return &result, nil
+}
+
+// RequestImplementation requests the implementation location(s) at the given position.
+func (c *Client) RequestImplementation(ctx context.Context, uri string, position protocol.Position) (*protocol.Or_Result_textDocument_implementation, error) {
+	if !c.initialized.Load() {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	params := protocol.ImplementationParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(uri)},
+			Position:     position,
+		},
+	}
+
+	var result protocol.Or_Result_textDocument_implementation
+	err := c.conn.Call(ctx, MethodTextDocumentImplementation, params, &result)
+	if err != nil {
+		return nil, fmt.Errorf("implementation request failed: %w", err)
+	}
+	return &result, nil
+}
+
 // FindReferences finds all references to the symbol at the given position.
 func (c *Client) FindReferences(ctx context.Context, filepath string, line, character int, includeDeclaration bool) ([]protocol.Location, error) {
 	uri := string(protocol.URIFromPath(filepath))
@@ -672,6 +715,10 @@ func (c *Client) makeClientCapabilities(enableSnippets bool) map[string]any {
 			"definition": map[string]any{
 				fieldDynamicRegistration: true,
 				"linkSupport":            true,
+			},
+			"implementation": map[string]any{
+				"dynamicRegistration": true,
+				"linkSupport":         true,
 			},
 			"references": map[string]any{
 				fieldDynamicRegistration: true,
