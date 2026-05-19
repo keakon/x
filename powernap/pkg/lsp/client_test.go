@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
 )
 
 func TestPositionToByteOffset(t *testing.T) {

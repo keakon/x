@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
-	"github.com/charmbracelet/x/powernap/pkg/transport"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/transport"
 )
 
 // OffsetEncoding represents the character encoding used for text document offsets.

@@ -1,4 +1,4 @@
-module github.com/charmbracelet/x/powernap
+module github.com/keakon/x/powernap
 
 go 1.24
 
