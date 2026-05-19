@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
-	"github.com/charmbracelet/x/powernap/pkg/transport"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/transport"
 )
 
 // LSP method constants.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
 )
 
 func TestRequestDefinitionRequiresInitializedClient(t *testing.T) {

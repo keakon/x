@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
 )
 
 // TextDocumentSyncManager manages text document synchronization with the language server.
