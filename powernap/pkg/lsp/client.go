@@ -858,13 +858,15 @@ func startServerProcess(ctx context.Context, config ClientConfig) (io.ReadWriteC
 		return nil, fmt.Errorf("failed to start process: %w", err)
 	}
 
+	closing := make(chan struct{})
+
 	// Monitor stderr
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := stderr.Read(buf)
 			if err != nil {
-				if err != io.EOF {
+				if err != io.EOF && !isClosedStderrPipeError(err, closing) {
 					slog.Error("Error reading stderr", "error", err)
 				}
 				break
@@ -876,10 +878,11 @@ func startServerProcess(ctx context.Context, config ClientConfig) (io.ReadWriteC
 	}()
 
 	closer := &processCloser{
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
+		cmd:     cmd,
+		stdin:   stdin,
+		stdout:  stdout,
+		stderr:  stderr,
+		closing: closing,
 	}
 
 	return transport.NewStreamTransport(stdout, stdin, closer), nil
@@ -890,12 +893,14 @@ type processCloser struct {
 	stdin     io.WriteCloser
 	stdout    io.ReadCloser
 	stderr    io.ReadCloser
+	closing   chan struct{}
 	closeOnce sync.Once
 	closeErr  error
 }
 
 func (c *processCloser) Close() error {
 	c.closeOnce.Do(func() {
+		close(c.closing)
 		errs := []error{
 			c.stdin.Close(),
 			c.stdout.Close(),
@@ -919,4 +924,16 @@ func (c *processCloser) Close() error {
 		c.closeErr = errors.Join(errs...)
 	})
 	return c.closeErr
+}
+
+func isClosedStderrPipeError(err error, closing <-chan struct{}) bool {
+	if err == nil {
+		return false
+	}
+	select {
+	case <-closing:
+		return errors.Is(err, os.ErrClosed) || strings.Contains(strings.ToLower(err.Error()), "file already closed")
+	default:
+		return false
+	}
 }

@@ -2,6 +2,8 @@ package lsp
 
 import (
 	"context"
+	"errors"
+	"os"
 	"sync"
 	"testing"
 
@@ -91,6 +93,26 @@ func TestPositionToByteOffset(t *testing.T) {
 					tt.lineText, tt.utf16Char, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestClosedStderrPipeErrorIsSilentDuringClose(t *testing.T) {
+	closing := make(chan struct{})
+	if isClosedStderrPipeError(errors.New("read |0: file already closed"), closing) {
+		t.Fatal("file already closed before Close should not be treated as normal shutdown")
+	}
+	if isClosedStderrPipeError(os.ErrClosed, closing) {
+		t.Fatal("os.ErrClosed before Close should not be treated as normal shutdown")
+	}
+	close(closing)
+	if !isClosedStderrPipeError(errors.New("read |0: file already closed"), closing) {
+		t.Fatal("file already closed during Close should be treated as normal shutdown")
+	}
+	if !isClosedStderrPipeError(os.ErrClosed, closing) {
+		t.Fatal("os.ErrClosed should be treated as normal shutdown")
+	}
+	if isClosedStderrPipeError(errors.New("permission denied"), closing) {
+		t.Fatal("unrelated stderr read errors should still be reported")
 	}
 }
 
