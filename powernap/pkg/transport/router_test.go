@@ -95,3 +95,23 @@ func TestRouteParamslessRequestAndDefaultHandlerReachHandlerAsNull(t *testing.T)
 		t.Fatalf("default handler params = %s, want null", defaultGot)
 	}
 }
+
+func TestRouteParamslessParamsAreNotShared(t *testing.T) {
+	r := NewRouter()
+	var calls int
+	r.HandleNotification("window/showMessage", func(_ context.Context, _ string, params json.RawMessage) {
+		calls++
+		if calls == 1 {
+			params[0] = 'X'
+		}
+	})
+
+	for range 2 {
+		if _, err := r.Route(context.Background(), decodeRequest(t, `{"jsonrpc":"2.0","method":"window/showMessage"}`)); err != nil {
+			t.Fatalf("Route() error = %v", err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("handler calls = %d, want 2", calls)
+	}
+}
