@@ -52,6 +52,24 @@ func (r *Router) SetDefaultHandler(handler Handler) {
 	r.defaultHandler = handler
 }
 
+// jsonNullParams is the params payload substituted when a message carries no
+// params field at all. jsonrpc2 leaves Request.Params nil in that case (an
+// explicit "params": null arrives as a pointer to the null literal instead), so
+// dereferencing it panics inside the connection's reader goroutine - and a panic
+// there takes the whole process down, since nothing on this path recovers.
+// Routing absence as JSON null keeps every handler on the path it already takes
+// for an explicit null.
+var jsonNullParams = json.RawMessage("null")
+
+// requestParams returns the params of req, substituting JSON null when the
+// message omitted the params field.
+func requestParams(req *jsonrpc2.Request) json.RawMessage {
+	if req.Params == nil {
+		return jsonNullParams
+	}
+	return *req.Params
+}
+
 // Route routes a message to the appropriate handler.
 func (r *Router) Route(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 	r.mu.RLock()
@@ -60,19 +78,20 @@ func (r *Router) Route(ctx context.Context, req *jsonrpc2.Request) (any, error) 
 	// Check if it's a notification (no ID)
 	if req.ID == (jsonrpc2.ID{}) {
 		if handler, ok := r.notificationHandlers[req.Method]; ok {
-			handler(ctx, req.Method, *req.Params)
+			handler(ctx, req.Method, requestParams(req))
 		}
 		return nil, nil
 	}
 
 	// It's a request
+	params := requestParams(req)
 	if handler, ok := r.handlers[req.Method]; ok {
-		return handler(ctx, req.Method, *req.Params)
+		return handler(ctx, req.Method, params)
 	}
 
 	// Use default handler if available
 	if r.defaultHandler != nil {
-		return r.defaultHandler(ctx, req.Method, *req.Params)
+		return r.defaultHandler(ctx, req.Method, params)
 	}
 
 	return nil, fmt.Errorf("no handler for method: %s", req.Method)
