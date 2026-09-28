@@ -236,3 +236,83 @@ func TestProcessCloser_ConcurrentCancelAndClose(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+func TestSaveOptionsDecodesServerSaveCapability(t *testing.T) {
+	tests := []struct {
+		name        string
+		sync        any
+		wantInclude bool
+		wantOK      bool
+	}{
+		{name: "no capability", sync: nil},
+		{name: "sync kind only", sync: float64(2)},
+		{name: "open close only", sync: map[string]any{"openClose": true, "change": float64(2)}},
+		{name: "save enabled", sync: map[string]any{"save": true}, wantOK: true},
+		{name: "save disabled", sync: map[string]any{"save": false}},
+		{name: "save with text", sync: map[string]any{"save": map[string]any{"includeText": true}}, wantOK: true, wantInclude: true},
+		{name: "save without text", sync: map[string]any{"save": map[string]any{"includeText": false}}, wantOK: true},
+		{name: "save with unknown shape", sync: map[string]any{"save": map[string]any{"unexpected": 1}}, wantOK: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Client{capabilities: protocol.ServerCapabilities{TextDocumentSync: tt.sync}}
+			options, ok := c.SaveOptions()
+			if ok != tt.wantOK {
+				t.Fatalf("SaveOptions() ok = %v, want %v", ok, tt.wantOK)
+			}
+			if options.IncludeText != tt.wantInclude {
+				t.Fatalf("SaveOptions() includeText = %v, want %v", options.IncludeText, tt.wantInclude)
+			}
+		})
+	}
+}
+
+func TestMakeClientCapabilitiesDeclaresOnlyImplementedFeatures(t *testing.T) {
+	caps := (&Client{}).makeClientCapabilities(false)
+
+	textDocument, ok := caps["textDocument"].(map[string]any)
+	if !ok {
+		t.Fatalf("textDocument capabilities missing: %#v", caps)
+	}
+	synchronization, ok := textDocument["synchronization"].(map[string]any)
+	if !ok {
+		t.Fatalf("textDocument.synchronization capabilities missing: %#v", textDocument)
+	}
+	if synchronization["openClose"] != true || synchronization["didSave"] != true {
+		t.Fatalf("openClose/didSave should be declared, got %#v", synchronization)
+	}
+	for _, key := range []string{"willSave", "willSaveWaitUntil"} {
+		if _, ok := synchronization[key]; ok {
+			t.Fatalf("%s has no sending path and must not be declared", key)
+		}
+	}
+
+	workspace, ok := caps["workspace"].(map[string]any)
+	if !ok {
+		t.Fatalf("workspace capabilities missing: %#v", caps)
+	}
+	// These invite server-initiated requests (workspace/applyEdit,
+	// workspace/workspaceFolders, workspace/will*Files) that the client does
+	// not answer, so they must stay undeclared.
+	for _, key := range []string{"applyEdit", "workspaceEdit", "workspaceFolders", "fileOperations"} {
+		if _, ok := workspace[key]; ok {
+			t.Fatalf("workspace.%s must not be declared", key)
+		}
+	}
+
+	// window/workDoneProgress, window/showMessageRequest and window/showDocument
+	// are server-initiated requests without handlers; declaring the window
+	// capabilities would invite them.
+	if _, ok := caps["window"]; ok {
+		t.Fatalf("window capabilities must not be declared without handlers: %#v", caps["window"])
+	}
+
+	general, ok := caps["general"].(map[string]any)
+	if !ok {
+		t.Fatalf("general capabilities missing: %#v", caps)
+	}
+	encodings, ok := general["positionEncodings"].([]string)
+	if !ok || len(encodings) != 1 || encodings[0] != "utf-16" {
+		t.Fatalf("positionEncodings = %#v, want [utf-16]", general["positionEncodings"])
+	}
+}
