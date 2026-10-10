@@ -3,6 +3,7 @@ package ansi
 import (
 	"image/color"
 
+	upstream "github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -13,7 +14,9 @@ type Color interface {
 }
 
 // BasicColor is an ANSI 3-bit or 4-bit color with a value from 0 to 15.
-type BasicColor uint8
+// Palette indices share their type identity with colorprofile; otherwise a
+// profile conversion would treat an indexed color as a fresh RGB color.
+type BasicColor = upstream.BasicColor
 
 var _ Color = BasicColor(0)
 
@@ -67,27 +70,10 @@ const (
 	BrightWhite
 )
 
-// RGBA returns the red, green, blue and alpha components of the color. It
-// satisfies the color.Color interface.
-func (c BasicColor) RGBA() (uint32, uint32, uint32, uint32) {
-	ansi := uint32(c)
-	if ansi > 15 {
-		return 0, 0, 0, 0xffff
-	}
-
-	return ansiToRGB(byte(ansi)).RGBA()
-}
-
 // IndexedColor is an ANSI 256 (8-bit) color with a value from 0 to 255.
-type IndexedColor uint8
+type IndexedColor = upstream.IndexedColor
 
 var _ Color = IndexedColor(0)
-
-// RGBA returns the red, green, blue and alpha components of the color. It
-// satisfies the color.Color interface.
-func (c IndexedColor) RGBA() (uint32, uint32, uint32, uint32) {
-	return ansiToRGB(byte(c)).RGBA()
-}
 
 // ExtendedColor is an ANSI 256 (8-bit) color with a value from 0 to 255.
 //

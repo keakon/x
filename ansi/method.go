@@ -4,7 +4,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/clipperhouse/displaywidth"
+	"github.com/keakon/displaywidth"
 	"github.com/mattn/go-runewidth"
 )
 

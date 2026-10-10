@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi/parser"
+	"github.com/keakon/x/ansi/parser"
 )
 
 // nbsp is a non-breaking space.
@@ -54,7 +54,7 @@ func hardwrap(m Method, s string, limit int, preserveSpace bool) string {
 	i := 0
 	for i < len(b) {
 		state, action := parser.Table.Transition(pstate, b[i])
-		if state == parser.Utf8State {
+		if state == parser.Utf8State || (m == GraphemeWidth && action == parser.PrintAction && asciiMayStartGrapheme(b, i)) {
 			var width int
 			cluster, width = FirstGraphemeCluster(b[i:], m)
 			i += len(cluster)
@@ -64,7 +64,7 @@ func hardwrap(m Method, s string, limit int, preserveSpace bool) string {
 			}
 			if !preserveSpace && curWidth == 0 && len(cluster) <= 4 {
 				// Skip spaces at the beginning of a line
-				if r, _ := utf8.DecodeRune(cluster); r != utf8.RuneError && unicode.IsSpace(r) {
+				if r, size := utf8.DecodeRune(cluster); r != utf8.RuneError && len(cluster) == size && unicode.IsSpace(r) {
 					pstate = parser.GroundState
 					continue
 				}
@@ -186,20 +186,20 @@ func wordwrap(m Method, s string, limit int, breakpoints string) string {
 	i := 0
 	for i < len(b) {
 		state, action := parser.Table.Transition(pstate, b[i])
-		if state == parser.Utf8State { //nolint:nestif
+		if state == parser.Utf8State || (m == GraphemeWidth && action == parser.PrintAction && asciiMayStartGrapheme(b, i)) { //nolint:nestif
 			var width int
 			cluster, width = FirstGraphemeCluster(b[i:], m)
 			i += len(cluster)
 
-			r, _ := utf8.DecodeRune(cluster)
-			if r != utf8.RuneError && unicode.IsSpace(r) && r != nbsp {
+			r, size := utf8.DecodeRune(cluster)
+			if r != utf8.RuneError && len(cluster) == size && unicode.IsSpace(r) && r != nbsp {
 				addWord()
 				space.WriteRune(r)
 			} else if bytes.ContainsAny(cluster, breakpoints) {
 				addSpace()
 				addWord()
 				buf.Write(cluster)
-				curWidth++
+				curWidth += width
 			} else {
 				word.Write(cluster)
 				wordLen += width
@@ -338,14 +338,14 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 	i := 0
 	for i < len(s) {
 		state, action := parser.Table.Transition(pstate, s[i])
-		if state == parser.Utf8State { //nolint:nestif
+		if state == parser.Utf8State || (m == GraphemeWidth && action == parser.PrintAction && asciiMayStartGrapheme(s, i)) { //nolint:nestif
 			var width int
 			cluster, width = FirstGraphemeCluster(s[i:], m)
 			i += len(cluster)
 
-			r, _ := utf8.DecodeRuneInString(cluster)
+			r, size := utf8.DecodeRuneInString(cluster)
 			switch {
-			case r != utf8.RuneError && unicode.IsSpace(r) && r != nbsp: // nbsp is a non-breaking space
+			case r != utf8.RuneError && len(cluster) == size && unicode.IsSpace(r) && r != nbsp: // nbsp is a non-breaking space
 				addWord()
 				space.WriteRune(r)
 				spaceWidth += width

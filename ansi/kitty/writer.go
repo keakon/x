@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/charmbracelet/x/ansi"
+	"github.com/keakon/x/ansi"
 )
 
 var (

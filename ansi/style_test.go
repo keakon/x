@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
+	"github.com/keakon/x/ansi"
 )
 
 func TestReset(t *testing.T) {

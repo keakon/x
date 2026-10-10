@@ -3,7 +3,7 @@ package ansi
 import (
 	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi/parser"
+	"github.com/keakon/x/ansi/parser"
 	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 

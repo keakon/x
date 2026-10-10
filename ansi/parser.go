@@ -4,7 +4,7 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/charmbracelet/x/ansi/parser"
+	"github.com/keakon/x/ansi/parser"
 )
 
 // Parser represents a DEC ANSI compatible sequence parser.

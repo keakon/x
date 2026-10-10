@@ -3,9 +3,10 @@ package ansi
 import (
 	"strings"
 
-	"github.com/charmbracelet/x/ansi/parser"
-	"github.com/clipperhouse/displaywidth"
 	"github.com/clipperhouse/uax29/v2/graphemes"
+	"github.com/keakon/displaywidth"
+
+	"github.com/keakon/x/ansi/parser"
 )
 
 // Cut the string, without adding any prefix or tail strings. This function is
@@ -89,7 +90,7 @@ func truncate(m Method, s string, length int, tail string) string {
 	// collect ANSI escape codes until we reach the end of string.
 	for i < len(s) {
 		state, action := parser.Table.Transition(pstate, s[i])
-		if state == parser.Utf8State {
+		if state == parser.Utf8State || (m == GraphemeWidth && action == parser.PrintAction && asciiMayStartGrapheme(s, i)) {
 			// This action happens when we transition to the Utf8State.
 			var width int
 			cluster, width = FirstGraphemeCluster(s[i:], m)
@@ -202,7 +203,7 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 		}
 
 		state, action := parser.Table.Transition(pstate, s[i])
-		if state == parser.Utf8State {
+		if state == parser.Utf8State || (m == GraphemeWidth && action == parser.PrintAction && asciiMayStartGrapheme(s, i)) {
 			var width int
 			cluster, width = FirstGraphemeCluster(s[i:], m)
 
