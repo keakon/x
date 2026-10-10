@@ -14,9 +14,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/x/powernap/pkg/config"
-	"github.com/charmbracelet/x/powernap/pkg/lsp"
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/config"
+	"github.com/keakon/x/powernap/pkg/lsp"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
 )
 
 // Registry manages multiple language server instances.

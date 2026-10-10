@@ -63,7 +63,7 @@ func NewConnection(ctx context.Context, stream io.ReadWriteCloser, logger *slog.
 // Call makes a request to the language server and waits for a response.
 func (c *Connection) Call(ctx context.Context, method string, params any, result any) error {
 	if c.closed.Load() {
-		return fmt.Errorf("connection is closed")
+		return fmt.Errorf("connection is closed: %w", jsonrpc2.ErrClosed)
 	}
 
 	return c.conn.Call(ctx, method, params, result) //nolint:wrapcheck
@@ -72,7 +72,7 @@ func (c *Connection) Call(ctx context.Context, method string, params any, result
 // Notify sends a notification to the language server.
 func (c *Connection) Notify(ctx context.Context, method string, params any) error {
 	if c.closed.Load() {
-		return fmt.Errorf("connection is closed")
+		return fmt.Errorf("connection is closed: %w", jsonrpc2.ErrClosed)
 	}
 
 	return c.conn.Notify(ctx, method, params) //nolint:wrapcheck

@@ -52,6 +52,14 @@ func (r *Router) SetDefaultHandler(handler Handler) {
 	r.defaultHandler = handler
 }
 
+// requestParams returns the params of req, substituting JSON null when the
+func requestParams(req *jsonrpc2.Request) json.RawMessage {
+	if req.Params == nil {
+		return json.RawMessage("null")
+	}
+	return *req.Params
+}
+
 // Route routes a message to the appropriate handler.
 func (r *Router) Route(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 	r.mu.RLock()
@@ -60,19 +68,20 @@ func (r *Router) Route(ctx context.Context, req *jsonrpc2.Request) (any, error) 
 	// Check if it's a notification (no ID)
 	if req.ID == (jsonrpc2.ID{}) {
 		if handler, ok := r.notificationHandlers[req.Method]; ok {
-			handler(ctx, req.Method, *req.Params)
+			handler(ctx, req.Method, requestParams(req))
 		}
 		return nil, nil
 	}
 
 	// It's a request
+	params := requestParams(req)
 	if handler, ok := r.handlers[req.Method]; ok {
-		return handler(ctx, req.Method, *req.Params)
+		return handler(ctx, req.Method, params)
 	}
 
 	// Use default handler if available
 	if r.defaultHandler != nil {
-		return r.defaultHandler(ctx, req.Method, *req.Params)
+		return r.defaultHandler(ctx, req.Method, params)
 	}
 
 	return nil, fmt.Errorf("no handler for method: %s", req.Method)

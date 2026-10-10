@@ -3,6 +3,7 @@
 package lsp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/x/powernap/pkg/lsp/protocol"
-	"github.com/charmbracelet/x/powernap/pkg/transport"
+	"github.com/keakon/x/powernap/pkg/lsp/protocol"
+	"github.com/keakon/x/powernap/pkg/transport"
 )
 
 // LSP method constants.
@@ -32,6 +33,7 @@ const (
 	MethodTextDocumentCompletion             = "textDocument/completion"
 	MethodTextDocumentHover                  = "textDocument/hover"
 	MethodTextDocumentDefinition             = "textDocument/definition"
+	MethodTextDocumentImplementation         = "textDocument/implementation"
 	MethodTextDocumentReferences             = "textDocument/references"
 	MethodTextDocumentDiagnostic             = "textDocument/publishDiagnostics"
 	MethodTextDocumentRename                 = "textDocument/rename"
@@ -220,6 +222,42 @@ func (c *Client) GetCapabilities() protocol.ServerCapabilities {
 	return c.capabilities
 }
 
+// SaveOptions returns the server's textDocumentSync.save capability when the
+// server asked for save notifications. The capability is a union in the LSP
+// schema (`save?: boolean | SaveOptions`), so a bare `true` normalizes to
+// SaveOptions{} while a detailed object keeps its includeText flag.
+func (c *Client) SaveOptions() (protocol.SaveOptions, bool) {
+	raw, err := json.Marshal(c.capabilities.TextDocumentSync)
+	if err != nil || len(raw) == 0 {
+		return protocol.SaveOptions{}, false
+	}
+	var syncOptions struct {
+		Save json.RawMessage `json:"save"`
+	}
+	if err := json.Unmarshal(raw, &syncOptions); err != nil {
+		return protocol.SaveOptions{}, false
+	}
+	return parseSaveCapability(syncOptions.Save)
+}
+
+func parseSaveCapability(raw json.RawMessage) (protocol.SaveOptions, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || bytes.Equal(trimmed, []byte("false")) {
+		return protocol.SaveOptions{}, false
+	}
+	if bytes.Equal(trimmed, []byte("true")) {
+		return protocol.SaveOptions{}, true
+	}
+	var options protocol.SaveOptions
+	if err := json.Unmarshal(trimmed, &options); err != nil {
+		// A save capability that cannot be decoded still means the server asked
+		// for save notifications; omitting the text is safer than dropping the
+		// notification.
+		return protocol.SaveOptions{}, true
+	}
+	return options, true
+}
+
 // IsInitialized returns whether the client has been initialized.
 func (c *Client) IsInitialized() bool {
 	return c.initialized.Load()
@@ -301,6 +339,24 @@ func (c *Client) NotifyDidChangeTextDocument(ctx context.Context, uri string, ve
 	}
 
 	return c.conn.Notify(ctx, MethodTextDocumentDidChange, params) //nolint:wrapcheck
+}
+
+// NotifyDidSaveTextDocument notifies the server that a document was saved.
+// text is sent only when the server asked for it through the save capability's
+// includeText option; pass nil to omit the content.
+func (c *Client) NotifyDidSaveTextDocument(ctx context.Context, uri string, text *string) error {
+	if !c.initialized.Load() {
+		return fmt.Errorf("client not initialized")
+	}
+
+	params := protocol.DidSaveTextDocumentParams{
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: protocol.DocumentURI(uri),
+		},
+		Text: text,
+	}
+
+	return c.conn.Notify(ctx, MethodTextDocumentDidSave, params) //nolint:wrapcheck
 }
 
 // NotifyDidChangeWatchedFiles notifies the server that watched files have
@@ -403,6 +459,48 @@ func (c *Client) RequestHover(ctx context.Context, uri string, position protocol
 		return nil, fmt.Errorf("hover request failed: %w", err)
 	}
 
+	return &result, nil
+}
+
+// RequestDefinitionRaw requests the raw definition result at the given position.
+func (c *Client) RequestDefinitionRaw(ctx context.Context, uri string, position protocol.Position) (*protocol.Or_Result_textDocument_definition, error) {
+	if !c.initialized.Load() {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	params := protocol.DefinitionParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(uri)},
+			Position:     position,
+		},
+	}
+
+	var result protocol.Or_Result_textDocument_definition
+	err := c.conn.Call(ctx, MethodTextDocumentDefinition, params, &result)
+	if err != nil {
+		return nil, fmt.Errorf("definition request failed: %w", err)
+	}
+	return &result, nil
+}
+
+// RequestImplementation requests the implementation location(s) at the given position.
+func (c *Client) RequestImplementation(ctx context.Context, uri string, position protocol.Position) (*protocol.Or_Result_textDocument_implementation, error) {
+	if !c.initialized.Load() {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	params := protocol.ImplementationParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: protocol.DocumentURI(uri)},
+			Position:     position,
+		},
+	}
+
+	var result protocol.Or_Result_textDocument_implementation
+	err := c.conn.Call(ctx, MethodTextDocumentImplementation, params, &result)
+	if err != nil {
+		return nil, fmt.Errorf("implementation request failed: %w", err)
+	}
 	return &result, nil
 }
 
@@ -643,8 +741,7 @@ func (c *Client) makeClientCapabilities(enableSnippets bool) map[string]any {
 		fieldTextDocument: map[string]any{
 			"synchronization": map[string]any{
 				fieldDynamicRegistration: true,
-				"willSave":               true,
-				"willSaveWaitUntil":      true,
+				"openClose":              true,
 				"didSave":                true,
 			},
 			"completion": map[string]any{
@@ -672,6 +769,10 @@ func (c *Client) makeClientCapabilities(enableSnippets bool) map[string]any {
 			"definition": map[string]any{
 				fieldDynamicRegistration: true,
 				"linkSupport":            true,
+			},
+			"implementation": map[string]any{
+				"dynamicRegistration": true,
+				"linkSupport":         true,
 			},
 			"references": map[string]any{
 				fieldDynamicRegistration: true,
@@ -723,13 +824,6 @@ func (c *Client) makeClientCapabilities(enableSnippets bool) map[string]any {
 			},
 		},
 		"workspace": map[string]any{
-			"applyEdit": true,
-			"workspaceEdit": map[string]any{
-				"documentChanges":       true,
-				"resourceOperations":    []string{"create", "rename", "delete"},
-				"failureHandling":       "textOnlyTransactional",
-				"normalizesLineEndings": true,
-			},
 			"didChangeConfiguration": map[string]any{
 				fieldDynamicRegistration: true,
 			},
@@ -740,28 +834,7 @@ func (c *Client) makeClientCapabilities(enableSnippets bool) map[string]any {
 			"symbol": map[string]any{
 				fieldDynamicRegistration: true,
 			},
-			"configuration":    true,
-			"workspaceFolders": true,
-			"fileOperations": map[string]any{
-				fieldDynamicRegistration: true,
-				"didCreate":              true,
-				"willCreate":             true,
-				"didRename":              true,
-				"willRename":             true,
-				"didDelete":              true,
-				"willDelete":             true,
-			},
-		},
-		"window": map[string]any{
-			"workDoneProgress": true,
-			"showMessage": map[string]any{
-				"messageActionItem": map[string]any{
-					"additionalPropertiesSupport": true,
-				},
-			},
-			"showDocument": map[string]any{
-				"support": true,
-			},
+			"configuration": true,
 		},
 		"general": map[string]any{
 			"regularExpressions": map[string]any{
@@ -772,7 +845,10 @@ func (c *Client) makeClientCapabilities(enableSnippets bool) map[string]any {
 				"parser":     "marked",
 				fieldVersion: "1.1.0",
 			},
-			"positionEncodings": []string{"utf-8", "utf-16"},
+			// Only UTF-16 is declared: position conversions in this package
+			// (PositionToByteOffset) assume UTF-16, the LSP default, and every
+			// server must support it.
+			"positionEncodings": []string{"utf-16"},
 		},
 	}
 }
@@ -811,13 +887,15 @@ func startServerProcess(ctx context.Context, config ClientConfig) (io.ReadWriteC
 		return nil, fmt.Errorf("failed to start process: %w", err)
 	}
 
+	closing := make(chan struct{})
+
 	// Monitor stderr
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := stderr.Read(buf)
 			if err != nil {
-				if err != io.EOF {
+				if err != io.EOF && !isClosedStderrPipeError(err, closing) {
 					slog.Error("Error reading stderr", "error", err)
 				}
 				break
@@ -829,10 +907,11 @@ func startServerProcess(ctx context.Context, config ClientConfig) (io.ReadWriteC
 	}()
 
 	closer := &processCloser{
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
+		cmd:     cmd,
+		stdin:   stdin,
+		stdout:  stdout,
+		stderr:  stderr,
+		closing: closing,
 	}
 
 	return transport.NewStreamTransport(stdout, stdin, closer), nil
@@ -843,12 +922,14 @@ type processCloser struct {
 	stdin     io.WriteCloser
 	stdout    io.ReadCloser
 	stderr    io.ReadCloser
+	closing   chan struct{}
 	closeOnce sync.Once
 	closeErr  error
 }
 
 func (c *processCloser) Close() error {
 	c.closeOnce.Do(func() {
+		close(c.closing)
 		errs := []error{
 			c.stdin.Close(),
 			c.stdout.Close(),
@@ -872,4 +953,16 @@ func (c *processCloser) Close() error {
 		c.closeErr = errors.Join(errs...)
 	})
 	return c.closeErr
+}
+
+func isClosedStderrPipeError(err error, closing <-chan struct{}) bool {
+	if err == nil {
+		return false
+	}
+	select {
+	case <-closing:
+		return errors.Is(err, os.ErrClosed) || strings.Contains(strings.ToLower(err.Error()), "file already closed")
+	default:
+		return false
+	}
 }
